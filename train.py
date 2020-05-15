@@ -167,23 +167,12 @@ def load_arguments(parser):
 class Trainer(object):
 
 	"""
-		======= correlated options =====
-
-		--- train types ---
-		1. add_discriminator = True 	- domain adv training: t.train_discriminator
-				dloss_coeff: coeff for discriminator loss
-		2. ddinit = True				- train dd then train gec: t.train_ddgec
-				dd_num_epochs: epochs for dd training
-				gec_num_epochs: epochs for gec training
-		3. if both are False 			- use t.train
-
 		--- train_mode ---
 		1. train_mode:
 				end2end: load ddgec set
 				separate: load dd set & gec set
 		2. ddreg:
-				if True, add gec_dd kl & nll loss
-
+				False
 	"""
 
 	def __init__(self, expt_dir='experiment',
@@ -259,11 +248,9 @@ class Trainer(object):
 		model.eval()
 
 		loss = NLLLoss()
-		att_loss = NLLLoss()
 		dsfclassify_loss = BCELoss()
 
 		loss.reset()
-		att_loss.reset()
 		dsfclassify_loss.reset()
 
 		match = 0
@@ -355,46 +342,20 @@ class Trainer(object):
 					match += correct
 					total += non_padding.sum().item()
 				loss.norm_term += 1.0 * torch.sum(non_padding_mask_gec_tgt) - len(seqlist)
-				loss.normalise()
 
 				if not model.dd_classifier:
-					if type(src_labs) != type(None) and (mode.lower() == 'ddgec-dd' or mode.lower() == 'dd'):
-						# Eval attention loss
-						src_labs = src_labs.view(batch_size, max_seq_len) # [b,32,1] -> [b,32]
-						src_att_ref = convert_dd_att_ref_inv(src_labs).to(device) # [b,32]
-						step_atts = torch.cat(ret_dict['attention_score']).squeeze() # 31*(bx1x32) -> (b31) x 32
-						log_step_atts = torch.log(torch.clamp(step_atts, 1e-40, 1))
-						src_att_refs = src_att_ref[:,:-1].transpose(0,1).reshape(-1) # b x 31 -> b31
-						non_padding_mask_dd_tgts = non_padding_mask_dd_tgt[:,1:].transpose(0,1).reshape(-1) # b x 31 -> b31
-						att_loss.eval_batch_with_mask(log_step_atts.contiguous(),
-							src_att_refs, non_padding_mask_dd_tgts)
-
-						# Eval attention classification
-						accum_att_scores = torch.FloatTensor([0.0]).repeat(
-							batch_size, max_seq_len).to(device=device)
-						filled_masks = non_padding_mask_dd_tgt.repeat(
-							max_seq_len-1,1).type(torch.FloatTensor).to(device=device) # (b31) x 32
-						masked_step_atts = (step_atts * filled_masks).reshape(
-							max_seq_len-1, batch_size, max_seq_len) # 31 x b x 32
-						accum_att_scores = torch.sum(masked_step_atts, dim=0)
-						probs = torch.tanh(accum_att_scores)
-						dsfclassify_loss.eval_batch_with_mask(probs,
-							src_labs.type(torch.FloatTensor).to(device), non_padding_mask_dd_src)
-
-						att_loss.norm_term += batch_size
-						dsfclassify_loss.norm_term += batch_size
+					dsfclassify_loss = 0
 				else:
-					if type(src_labs) != type(None) and (mode.lower() == 'ddgec-dd' or mode.lower() == 'dd'):
-						src_labs = src_labs.view(batch_size, max_seq_len) # [16,32,1] -> [16,32]
-						probs = ret_dict['classify_prob'].view(batch_size, max_seq_len) # b * max_seq_len
-						dsfclassify_loss.eval_batch_with_mask(probs.reshape(-1), src_labs.reshape(-1)\
-							.type(torch.FloatTensor).to(device), non_padding_mask_dd_src.reshape(-1))
-						dsfclassify_loss.norm_term += batch_size
-
-				att_loss.norm_term += 1.0 * torch.sum(non_padding_mask_dd_tgt) - 1
-				dsfclassify_loss.norm_term += 1.0 * torch.sum(non_padding_mask_dd_src) - 1
-				att_loss.normalise()
-				dsfclassify_loss.normalise()
+					if type(src_labs) != type(None) \
+						and (mode.lower() == 'ddgec-dd' or mode.lower() == 'dd'):
+							src_labs = src_labs.view(batch_size, max_seq_len)
+							probs = ret_dict['classify_prob']\
+								.view(batch_size, max_seq_len) # b * max_seq_len
+							dsfclassify_loss.eval_batch_with_mask(
+								probs.reshape(-1), src_labs.reshape(-1)\
+								.type(torch.FloatTensor).to(device),
+								non_padding_mask_dd_src.reshape(-1))
+							dsfclassify_loss.norm_term += 1.0 * torch.sum(non_padding_mask_dd_src) - 1
 
 				if out_count < 3:
 					srcwords = _convert_to_words_batchfirst(src_ids, tgt_id2word)
@@ -408,14 +369,13 @@ class Trainer(object):
 					sys.stdout.buffer.write(outline)
 					out_count += 1
 
+		att_resloss = 0
+		loss.normalise()
+
 		if type(src_labs) != type(None) and (mode.lower() == 'ddgec-dd' or mode.lower() == 'dd'):
-			if not model.dd_classifier:
-				att_resloss = att_loss.get_loss()
-			else:
-				att_resloss = 0
+			dsfclassify_loss.normalise()
 			attcls_resloss = dsfclassify_loss.get_loss()
 		else:
-			att_resloss = 0
 			attcls_resloss = 0
 
 		if total == 0:

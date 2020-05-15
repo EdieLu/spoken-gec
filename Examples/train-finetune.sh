@@ -21,11 +21,11 @@ fold=10
 modeltype=joint-seq2seq-word
 tag=errantdd
 dd_classifier=False
-connect_type='wordhard' # 'wordhard' | 'wordsoft' | 'embed' | 'prob'
+connect_type='wordhard' # 'wordhard' | 'wordsoft' | 'embed' 
 shared_embed='context'
 
 script=/home/alta/BLTSpeaking/exp-ytl28/local-ytl/spoken-gec/train.py
-restart=None
+restart=None # set to pretrained model
 
 dd_loss_weight=1.0 # whether or not have dd tags
 loss_shift=True
