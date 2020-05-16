@@ -1,3 +1,4 @@
 NMT using RNN-LSTM
-adapted to run joint training of DD and GEC encdec
-updated from v7; use /encdec/run-v8 to run
+
+dd, gec e2e training
+modified from embedding-encdec-v8
