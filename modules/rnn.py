@@ -16,7 +16,7 @@ class StackedCell(nn.Module):
 
 		inputs: input for layer0
 		hidden: initial hidden state for all layers
-		output: res		
+		output: res
 	"""
 	def __init__(self, input_size, hidden_size, num_layers=1,
 				 dropout=0, bias=True, rnn_cell=nn.LSTMCell, residual=False):
@@ -33,7 +33,7 @@ class StackedCell(nn.Module):
 			input_size = hidden_size
 
 	def forward(self, inputs, hidden):
-		def select_layer(h_state, i):  
+		def select_layer(h_state, i):
 			if isinstance(h_state, tuple):
 				return tuple([select_layer(s, i) for s in h_state])
 			else:
@@ -56,7 +56,7 @@ class StackedCell(nn.Module):
 		else:
 			next_hidden = torch.stack(next_hidden)
 		return inputs, next_hidden
-	
+
 
 class TimeRecurrentCell(nn.Module):
 	"""
@@ -68,7 +68,7 @@ class TimeRecurrentCell(nn.Module):
 		outputs: b x t x cell_hidden_size
 		hidden: b x t x cell_hidden_size
 
-		note: 	in pytorch default is batch_first=False 
+		note: 	in pytorch default is batch_first=False
 				[seq_len, batch_size, var_dim]
 	"""
 	def __init__(self, cell, batch_first=True, lstm=True, reverse=False):
@@ -86,9 +86,9 @@ class TimeRecurrentCell(nn.Module):
 		time_dim = 1 if self.batch_first else 0
 		batch_size = inputs.size(batch_dim)
 
-		# init hidden: 
-		# 	a. set as 0: hidden[0] - num_layers x b x hidden_size 
-		# 	b. allow learning: 
+		# init hidden:
+		# 	a. set as 0: hidden[0] - num_layers x b x hidden_size
+		# 	b. allow learning:
 		if hidden is None:
 			num_layers = getattr(self.cell, 'num_layers', 1)
 			zero = inputs.data.new(1).zero_()
@@ -114,7 +114,7 @@ class TimeRecurrentCell(nn.Module):
 			# print('here')
 		outputs = torch.stack(outputs, time_dim) # b x t x hidden_size
 		# print('outputs size: {}'.format(outputs.size()))
-		
+
 		return outputs, hidden
 
 
@@ -123,7 +123,7 @@ class ConcatRecurrent(nn.Sequential):
 		concat output of rnn layers
 		inputs: common input for all layers
 		hidden: common initial hidden state for all layers
-		output: concat[res1, res2, res3, ...] 
+		output: concat[res1, res2, res3, ...]
 	"""
 	def forward(self, inputs, hidden=None):
 		hidden = hidden or tuple([None] * len(self))
@@ -141,10 +141,10 @@ class ConcatRecurrent(nn.Sequential):
 
 class StackedRecurrent(nn.Sequential):
 	"""
-		run through stacked complex-rnn layers 
+		run through stacked complex-rnn layers
 		inputs: input for layer0
 		hidden: initial hidden state for layer0
-		output: res		
+		output: res
 	"""
 	def __init__(self, dropout=0, residual=False):
 		super(StackedRecurrent, self).__init__()
@@ -174,13 +174,14 @@ def CustomiseLSTM(input_size, hidden_size,
 		customise LSTM: default biLSTM not reproducible
 		hierarchy: cell -> StackedCell -> TimeRecurrentCell -> Concat/StackedRecurrent
 
-		E.g. 
-			multi-layer unilstm 
-				a. along layer: in[t=0], h[l=0] -> h[l=1] -> h[l=L]
-				b. along time: 	in[t=0], h[l=:L] -> in[t=1], h[l=:L] -> in[t=T], h[l=:L]
-			multi-layer bilstm 
-				opt a: stack multilayer forward + backward unilstm (does not allow forward/backward talk between layers)
-				opt b: use previous bilstm hidden state as the input of the next bilstm layer 
+		E.g.
+		multi-layer unilstm
+			a. along layer: in[t=0], h[l=0] -> h[l=1] -> h[l=L]
+			b. along time: 	in[t=0], h[l=:L] -> in[t=1], h[l=:L] -> in[t=T], h[l=:L]
+		multi-layer bilstm
+			opt a: stack multilayer forward + backward unilstm
+				(does not allow forward/backward talk between layers)
+			opt b: use previous bilstm hidden state as the input of the next bilstm layer
 	"""
 
 	if bidirectional:
@@ -196,16 +197,13 @@ def CustomiseLSTM(input_size, hidden_size,
 		cell = nn.LSTMCell
 		bi_module = ConcatRecurrent()
 		bi_module.add_module('0_forward', TimeRecurrentCell(cell(input_size, hidden_size),
-													batch_first=batch_first,
-													lstm=True))
+			batch_first=batch_first, lstm=True))
 		bi_module.add_module('0_reversed', TimeRecurrentCell(cell(input_size, hidden_size),
-															 batch_first=batch_first,
-															 lstm=True,
-															 reverse=True))
+	 		batch_first=batch_first, lstm=True, reverse=True))
 		module = StackedRecurrent(residual)
 		# for i in range(num_layers):
 		for i in range(2):
-			module.add_module(str(i), bi_module)		
+			module.add_module(str(i), bi_module)
 		# module.add_module(str(0), bi_module)
 
 		# for name, param in bi_module.named_parameters():
@@ -215,20 +213,20 @@ def CustomiseLSTM(input_size, hidden_size,
 		"""
 		# opt b
 		cell = StackedCell(rnn_cell=nn.LSTMCell,
-						   input_size=input_size,
-						   hidden_size=hidden_size,
-						   num_layers=1,
-						   residual=residual,
-						   dropout=dropout)
+		   input_size=input_size,
+		   hidden_size=hidden_size,
+		   num_layers=1,
+		   residual=residual,
+		   dropout=dropout)
 
 		bi_module = ConcatRecurrent()
 		bi_module.add_module('0', TimeRecurrentCell(cell,
-													batch_first=batch_first,
-													lstm=True))
+			batch_first=batch_first,
+			lstm=True))
 		bi_module.add_module('0_reversed', TimeRecurrentCell(cell,
-															 batch_first=batch_first,
-															 lstm=True,
-															 reverse=True))
+			 batch_first=batch_first,
+			 lstm=True,
+			 reverse=True))
 		module = StackedRecurrent(residual)
 		for i in range(num_layers):
 			module.add_module(str(i), bi_module)
@@ -247,4 +245,3 @@ def CustomiseLSTM(input_size, hidden_size,
 								   lstm=True)
 
 	return module
-

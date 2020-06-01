@@ -59,7 +59,12 @@ class Trainer(object):
 		att_scale_up=1.0,
 		save_schedule='roll_back'):
 
-		self.random_seed = random_seed
+		if use_gpu and torch.cuda.is_available():
+			global device
+			device = torch.device('cuda')
+		else:
+			device = torch.device('cpu')
+		print('device: {}'.format(device))
 
 		# self.loss = loss
 		self.optimizer = None
